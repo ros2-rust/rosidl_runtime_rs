@@ -522,10 +522,15 @@ mod tests {
         }
     }
 
+    fn generate_ascii(g: &mut Gen) -> char {
+        let c = u8::min(u8::arbitrary(g), 127);
+        c as char
+    }
+
     impl Arbitrary for BoundedString<256> {
         fn arbitrary(g: &mut Gen) -> Self {
             let len = u8::arbitrary(g);
-            let s: std::string::String = (0..len).map(|_| char::arbitrary(g)).collect();
+            let s: std::string::String = (0..len).map(|_| generate_ascii(g)).collect();
             s.as_str().try_into().unwrap()
         }
     }
@@ -533,7 +538,7 @@ mod tests {
     impl Arbitrary for BoundedWString<256> {
         fn arbitrary(g: &mut Gen) -> Self {
             let len = u8::arbitrary(g);
-            let s: std::string::String = (0..len).map(|_| char::arbitrary(g)).collect();
+            let s: std::string::String = (0..len).map(|_| generate_ascii(g)).collect();
             s.as_str().try_into().unwrap()
         }
     }
