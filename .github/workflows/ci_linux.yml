@@ -1,0 +1,38 @@
+name: Rust Minimal
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run the CI at 01:22 UTC every Tuesday
+    # We pick an arbitrary time outside of most of the world's work hours
+    # to minimize the likelihood of running alongside a heavy workload.
+    - cron: '22 1 * * 2'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        rust-version: [stable, 1.75]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup rust
+      run: rustup default ${{ matrix.rust-version }}
+
+    - name: Test default features
+      run: cargo test --workspace
+
+    - name: Test with serde
+      run: cargo test --workspace -F=serde
+
+    - name: Build docs
+      run: cargo doc --all-features
