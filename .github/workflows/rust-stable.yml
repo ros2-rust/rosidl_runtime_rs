@@ -18,7 +18,6 @@ jobs:
   build:
     strategy:
       matrix:
-        rust_version: [stable, 1.75]
         ros_distribution:
           - humble
           - jazzy
@@ -55,8 +54,10 @@ jobs:
         required-ros-distributions: ${{ matrix.ros_distribution }}
         use-ros2-testing: ${{ matrix.ros_distribution == 'rolling' }}
 
-    - name: Setup rust
-      run: rustup default ${{ matrix.rust_version }}
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy, rustfmt
 
     - name: Test default features
       run: cargo test --workspace
