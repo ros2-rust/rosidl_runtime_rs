@@ -60,10 +60,16 @@ jobs:
         components: clippy, rustfmt
 
     - name: Test default features
-      run: cargo test --workspace
+      run: |
+        . /opt/ros/${{ matrix.ros_distribution }}/setup.sh
+        cargo test --workspace
 
     - name: Test with serde
-      run: cargo test --workspace -F=serde
+      run: |
+        . /opt/ros/${{ matrix.ros_distribution }}/setup.sh
+        cargo test --workspace -F=serde
 
     - name: Build docs
-      run: cargo doc --all-features
+      run: |
+        . /opt/ros/${{ matrix.ros_distribution }}/setup.sh
+        cargo doc --all-features
