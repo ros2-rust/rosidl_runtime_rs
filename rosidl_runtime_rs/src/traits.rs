@@ -174,9 +174,6 @@ pub trait Action: 'static {
     /// The feedback message associated with this action.
     type Feedback: Message;
 
-    /// The goal_status message associated with this action.
-    type GoalStatusMessage: Message;
-
     /// The feedback message associated with this action.
     type FeedbackMessage: Message;
 
@@ -195,11 +192,10 @@ pub trait Action: 'static {
     /// Create a goal request message with the given UUID and goal.
     fn create_goal_request(goal_id: &[u8; 16], goal: RmwGoalData<Self>) -> RmwGoalRequest<Self>;
 
-    /// Get the UUID of a send goal request.
-    fn get_goal_request_uuid(request: &RmwGoalRequest<Self>) -> &[u8; 16];
-
-    /// Get the goal data of a send goal request.
-    fn get_goal_request_data(request: &RmwGoalRequest<Self>) -> &RmwGoalData<Self>;
+    /// Split a goal request message into its two parts:
+    /// * The UUID of the goal
+    /// * The message that describes the goal
+    fn split_goal_request(request: RmwGoalRequest<Self>) -> ([u8; 16], RmwGoalData<Self>);
 
     /// Create a goal response message with the given acceptance and timestamp.
     fn create_goal_response(accepted: bool, stamp: (i32, u32)) -> RmwGoalResponse<Self>;
@@ -216,12 +212,10 @@ pub trait Action: 'static {
         feedback: RmwFeedbackData<Self>,
     ) -> RmwFeedbackMessage<Self>;
 
-    /// Get the UUID of a feedback message.
-    fn get_feedback_message_uuid(feedback: &RmwFeedbackMessage<Self>) -> &[u8; 16];
-
-    /// Get the feedback data of a feedback message.
-    fn get_feedback_message_data(feedback: &RmwFeedbackMessage<Self>)
-        -> &RmwFeedbackData<Self>;
+    /// Split a feedback message into its two parts:
+    /// * The UUID of the goal that the feedback is for
+    /// * The message the describes the feedback data
+    fn split_feedback_message(feedback: RmwFeedbackMessage<Self>) -> ([u8; 16], RmwFeedbackData<Self>);
 
     /// Create a result request message with the given goal ID.
     fn create_result_request(goal_id: &[u8; 16]) -> RmwResultRequest<Self>;
@@ -232,11 +226,10 @@ pub trait Action: 'static {
     /// Create a result response message with the given status and contents.
     fn create_result_response(status: i8, result: RmwResultData<Self>) -> RmwResultResponse<Self>;
 
-    /// Get the result of a result response.
-    fn get_result_response_data(response: &RmwResultResponse<Self>) -> &RmwResultData<Self>;
-
-    /// Get the status of a result response.
-    fn get_result_response_status(response: &RmwResultResponse<Self>) -> i8;
+    /// Split a result response into its two parts:
+    /// * The status of the result (e.g. Succeeded, Aborted, Cancelled)
+    /// * The message that describes the final result of the action
+    fn split_result_response(response: RmwResultResponse<Self>) -> (i8, RmwResultData<Self>);
 }
 
 // ---- Type definitions to simplify the Action trait -----
