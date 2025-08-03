@@ -522,10 +522,24 @@ mod tests {
         }
     }
 
+    /// If we use char::arbitrary(g) then we can get back characters which are
+    /// outside the ASCII range. Since the length calculated by [`String`] is
+    /// based on the utf-8 length of the string (not based on the number of bytes
+    /// in the string), putting non-ASCII characters into it can skew the length
+    /// calculation in strange ways.
+    ///
+    /// This function generates only ASCII characters by cutting their values
+    /// off at 127. This does not give an even distribution of ASCII characters,
+    /// but that fact is not important for this smoke test.
+    fn generate_ascii(g: &mut Gen) -> char {
+        let c = u8::min(u8::arbitrary(g), 127);
+        c as char
+    }
+
     impl Arbitrary for BoundedString<256> {
         fn arbitrary(g: &mut Gen) -> Self {
             let len = u8::arbitrary(g);
-            let s: std::string::String = (0..len).map(|_| char::arbitrary(g)).collect();
+            let s: std::string::String = (0..len).map(|_| generate_ascii(g)).collect();
             s.as_str().try_into().unwrap()
         }
     }
@@ -533,7 +547,7 @@ mod tests {
     impl Arbitrary for BoundedWString<256> {
         fn arbitrary(g: &mut Gen) -> Self {
             let len = u8::arbitrary(g);
-            let s: std::string::String = (0..len).map(|_| char::arbitrary(g)).collect();
+            let s: std::string::String = (0..len).map(|_| generate_ascii(g)).collect();
             s.as_str().try_into().unwrap()
         }
     }
