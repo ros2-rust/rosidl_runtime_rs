@@ -1,5 +1,5 @@
 cfg_if::cfg_if! {
-    if #[cfg(not(feature="generate_docs"))] {
+    if #[cfg(not(feature="use_ros_shim"))] {
         use std::env;
         use std::path::Path;
 
@@ -19,7 +19,7 @@ cfg_if::cfg_if! {
 }
 
 fn main() {
-    #[cfg(not(feature = "generate_docs"))]
+    #[cfg(not(feature = "use_ros_shim"))]
     {
         let ament_prefix_path_list = get_env_var_or_abort(AMENT_PREFIX_PATH);
         for ament_prefix_path in ament_prefix_path_list.split(':') {
