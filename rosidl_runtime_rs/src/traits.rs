@@ -174,17 +174,6 @@ pub trait Action: 'static {
     /// The feedback message associated with this action.
     type Feedback: Message;
 
-    /// Get a pointer to the correct `rosidl_action_type_support_t` structure.
-    fn get_type_support() -> *const std::ffi::c_void;
-}
-
-/// Trait for action implementation details.
-///
-/// User code never needs to implement this trait, nor use its associated types.
-pub trait ActionImpl: 'static + Action {
-    /// The goal_status message associated with this action.
-    type GoalStatusMessage: Message;
-
     /// The feedback message associated with this action.
     type FeedbackMessage: Message;
 
@@ -197,11 +186,16 @@ pub trait ActionImpl: 'static + Action {
     /// The get_result service associated with this action.
     type GetResultService: Service;
 
+    /// Get a pointer to the correct `rosidl_action_type_support_t` structure.
+    fn get_type_support() -> *const std::ffi::c_void;
+
     /// Create a goal request message with the given UUID and goal.
     fn create_goal_request(goal_id: &[u8; 16], goal: RmwGoalData<Self>) -> RmwGoalRequest<Self>;
 
-    /// Get the UUID of a goal request.
-    fn get_goal_request_uuid(request: &RmwGoalRequest<Self>) -> &[u8; 16];
+    /// Split a goal request message into its two parts:
+    /// * The UUID of the goal
+    /// * The message that describes the goal
+    fn split_goal_request(request: RmwGoalRequest<Self>) -> ([u8; 16], RmwGoalData<Self>);
 
     /// Create a goal response message with the given acceptance and timestamp.
     fn create_goal_response(accepted: bool, stamp: (i32, u32)) -> RmwGoalResponse<Self>;
@@ -218,12 +212,10 @@ pub trait ActionImpl: 'static + Action {
         feedback: RmwFeedbackData<Self>,
     ) -> RmwFeedbackMessage<Self>;
 
-    /// Get the UUID of a feedback message.
-    fn get_feedback_message_uuid(feedback: &RmwFeedbackMessage<Self>) -> &[u8; 16];
-
-    /// Get the feedback of a feedback message.
-    fn get_feedback_message_feedback(feedback: &RmwFeedbackMessage<Self>)
-        -> &RmwFeedbackData<Self>;
+    /// Split a feedback message into its two parts:
+    /// * The UUID of the goal that the feedback is for
+    /// * The message the describes the feedback data
+    fn split_feedback_message(feedback: RmwFeedbackMessage<Self>) -> ([u8; 16], RmwFeedbackData<Self>);
 
     /// Create a result request message with the given goal ID.
     fn create_result_request(goal_id: &[u8; 16]) -> RmwResultRequest<Self>;
@@ -234,21 +226,40 @@ pub trait ActionImpl: 'static + Action {
     /// Create a result response message with the given status and contents.
     fn create_result_response(status: i8, result: RmwResultData<Self>) -> RmwResultResponse<Self>;
 
-    /// Get the result of a result response.
-    fn get_result_response_result(response: &RmwResultResponse<Self>) -> &RmwResultData<Self>;
-
-    /// Get the status of a result response.
-    fn get_result_response_status(response: &RmwResultResponse<Self>) -> i8;
+    /// Split a result response into its two parts:
+    /// * The status of the result (e.g. Succeeded, Aborted, Cancelled)
+    /// * The message that describes the final result of the action
+    fn split_result_response(response: RmwResultResponse<Self>) -> (i8, RmwResultData<Self>);
 }
 
-// Type definitions to simplify the ActionImpl trait
+// ---- Type definitions to simplify the Action trait -----
+
+/// RMW-compatible request message for a service
 pub type RmwServiceRequest<S> = <<S as Service>::Request as Message>::RmwMsg;
+
+/// RMW-compatible response message for a service
 pub type RmwServiceResponse<S> = <<S as Service>::Response as Message>::RmwMsg;
-pub type RmwGoalRequest<A> = RmwServiceRequest<<A as ActionImpl>::SendGoalService>;
-pub type RmwGoalResponse<A> = RmwServiceResponse<<A as ActionImpl>::SendGoalService>;
+
+/// RMW-compatible request message for an action send goal service
+pub type RmwGoalRequest<A> = RmwServiceRequest<<A as Action>::SendGoalService>;
+
+/// RMW-compatible response message for an action send goal service
+pub type RmwGoalResponse<A> = RmwServiceResponse<<A as Action>::SendGoalService>;
+
+/// RMW-compatible message describing a goal for an action
 pub type RmwGoalData<A> = <<A as Action>::Goal as Message>::RmwMsg;
+
+/// RMW-compatible message describing feedback data for an action
 pub type RmwFeedbackData<A> = <<A as Action>::Feedback as Message>::RmwMsg;
-pub type RmwFeedbackMessage<A> = <<A as ActionImpl>::FeedbackMessage as Message>::RmwMsg;
-pub type RmwResultRequest<A> = RmwServiceRequest<<A as ActionImpl>::GetResultService>;
-pub type RmwResultResponse<A> = RmwServiceResponse<<A as ActionImpl>::GetResultService>;
+
+/// RMW-compatible message that can be published to an action feedback topic
+pub type RmwFeedbackMessage<A> = <<A as Action>::FeedbackMessage as Message>::RmwMsg;
+
+/// RMW-compatible request message for obtaining the result of an action
+pub type RmwResultRequest<A> = RmwServiceRequest<<A as Action>::GetResultService>;
+
+/// RMW-compatible response message for obtaining the result of an action
+pub type RmwResultResponse<A> = RmwServiceResponse<<A as Action>::GetResultService>;
+
+/// RMW-compatible message describing the result data for an action
 pub type RmwResultData<A> = <<A as Action>::Result as Message>::RmwMsg;
