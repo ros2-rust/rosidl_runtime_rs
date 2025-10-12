@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.4.2...v0.5.0) - 2025-10-12
+
+### Other
+
+- Improve Action trait ([#15](https://github.com/ros2-rust/rosidl_runtime_rs/pull/15))
+
 ## [0.4.2](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.4.1...v0.4.2) - 2025-07-11
 
 ### Fixed
