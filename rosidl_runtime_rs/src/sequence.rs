@@ -503,7 +503,7 @@ impl std::error::Error for SequenceExceedsBoundsError {}
 macro_rules! impl_sequence_alloc_for_primitive_type {
     ($rust_type:ty, $init_func:ident, $fini_func:ident, $copy_func:ident) => {
         #[link(name = "rosidl_runtime_c")]
-        extern "C" {
+        unsafe extern "C" {
             fn $init_func(seq: *mut Sequence<$rust_type>, size: usize) -> bool;
             fn $fini_func(seq: *mut Sequence<$rust_type>);
             fn $copy_func(
