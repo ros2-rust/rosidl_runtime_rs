@@ -19,7 +19,7 @@ serde = { version = "1", optional = true }
 
 [features]
 default = []
-# This feature is solely for the purpose of being able to generate documetation without a ROS installation
+# This feature is solely for the purpose of being able to generate documentation without a ROS installation
 # The only intended usage of this feature is for docs.rs builders to work, and is not intended to be used by end users
 use_ros_shim = []
 
