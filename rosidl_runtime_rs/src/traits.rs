@@ -215,7 +215,9 @@ pub trait Action: 'static {
     /// Split a feedback message into its two parts:
     /// * The UUID of the goal that the feedback is for
     /// * The message the describes the feedback data
-    fn split_feedback_message(feedback: RmwFeedbackMessage<Self>) -> ([u8; 16], RmwFeedbackData<Self>);
+    fn split_feedback_message(
+        feedback: RmwFeedbackMessage<Self>,
+    ) -> ([u8; 16], RmwFeedbackData<Self>);
 
     /// Create a result request message with the given goal ID.
     fn create_result_request(goal_id: &[u8; 16]) -> RmwResultRequest<Self>;

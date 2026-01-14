@@ -116,7 +116,7 @@ pub struct StringExceedsBoundsError {
 macro_rules! string_impl {
     ($string:ty, $char_type:ty, $unsigned_char_type:ty, $string_conversion_func:ident, $init:ident, $fini:ident, $assignn:ident, $sequence_init:ident, $sequence_fini:ident, $sequence_copy:ident) => {
         #[link(name = "rosidl_runtime_c")]
-        extern "C" {
+        unsafe extern "C" {
             fn $init(s: *mut $string) -> bool;
             fn $fini(s: *mut $string);
             fn $assignn(s: *mut $string, value: *const $char_type, n: usize) -> bool;
