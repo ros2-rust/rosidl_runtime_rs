@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.5.0...v0.6.0) - 2026-01-14
+
+### Other
+
+- [**breaking**] require rustc 1.85 ([#18](https://github.com/ros2-rust/rosidl_runtime_rs/pull/18))
+
 ## [0.5.0](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.4.2...v0.5.0) - 2025-10-12
 
 ### Other
