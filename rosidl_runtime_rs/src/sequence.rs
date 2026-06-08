@@ -196,6 +196,19 @@ impl<T: SequenceAlloc> From<Vec<T>> for Sequence<T> {
     }
 }
 
+/// Fast conversion from a `Sequence<T>` to a `Vec<T>` for `Copy` element types.
+///
+/// For `Copy` element types (which includes all ROS 2 primitive types), this
+/// compiles down to a single `memcpy` from the C-owned sequence buffer into
+/// a freshly-allocated `Vec`. This avoids the per-element read-and-zero-write
+/// performed by `SequenceIterator::next()` when collecting into a `Vec` via
+/// `into_iter().collect()`.
+impl<T: SequenceAlloc + Copy> From<Sequence<T>> for Vec<T> {
+    fn from(seq: Sequence<T>) -> Self {
+        seq.as_slice().to_vec()
+    }
+}
+
 impl<T: SequenceAlloc> FromIterator<T> for Sequence<T> {
     fn from_iter<I>(iter: I) -> Self
     where
@@ -704,6 +717,22 @@ mod tests {
             seq_1.copy_from_slice(&xs);
             let seq_2 = seq_1.clone().into_iter().collect();
             seq_1 == seq_2
+        }
+    }
+
+    #[test]
+    fn test_into_vec_primitive_roundtrip() {
+        let xs: Vec<i32> = (0..1024).collect();
+        let seq: Sequence<i32> = Sequence::from(&xs[..]);
+        let ys: Vec<i32> = seq.into();
+        assert_eq!(xs, ys);
+    }
+
+    quickcheck! {
+        fn test_into_vec_primitive_quickcheck(xs: Vec<u8>) -> bool {
+            let seq: Sequence<u8> = Sequence::from(&xs[..]);
+            let ys: Vec<u8> = seq.into();
+            xs == ys
         }
     }
 }
