@@ -9,7 +9,7 @@ use std::{
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::traits::SequenceAlloc;
+use crate::traits::{SequenceAlloc, SequenceLayout};
 
 /// An unbounded sequence.
 ///
@@ -41,6 +41,21 @@ pub struct Sequence<T: SequenceAlloc> {
     data: *mut T,
     size: usize,
     capacity: usize,
+    _tail: T::LayoutTail,
+}
+
+/// Mirrors the two trailing fields of `rosidl_runtime_c__<T>__Sequence` for
+/// primitive element types. Starting with Lyrical, primitive sequences have
+/// these extra flags in their ABI; they are set/read only by the C++ side, so
+/// on the CPU backend both are `false` and the sequence behaves as before. See
+/// <https://github.com/ros2/rosidl/blob/rolling/rosidl_runtime_c/include/rosidl_runtime_c/primitives_sequence.h>.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct BufferFlags {
+    /// `true` when `data` points to an `rosidl::Buffer<T>*` rather than a plain array.
+    _is_rosidl_buffer: bool,
+    /// `true` when the sequence's fini must destroy that buffer.
+    _owns_rosidl_buffer: bool,
 }
 
 /// A bounded sequence.
@@ -114,6 +129,7 @@ impl<T: SequenceAlloc> Default for Sequence<T> {
             data: std::ptr::null_mut(),
             size: 0,
             capacity: 0,
+            _tail: Default::default(),
         }
     }
 }
@@ -312,6 +328,7 @@ impl<T: SequenceAlloc, const N: usize> Default for BoundedSequence<T, N> {
                 data: std::ptr::null_mut(),
                 size: 0,
                 capacity: 0,
+                _tail: Default::default(),
             },
         }
     }
@@ -398,6 +415,7 @@ impl<T: SequenceAlloc, const N: usize> IntoIterator for BoundedSequence<T, N> {
                 data: std::ptr::null_mut(),
                 size: 0,
                 capacity: 0,
+                _tail: Default::default(),
             },
         );
         SequenceIterator { seq, idx: 0 }
@@ -523,6 +541,16 @@ macro_rules! impl_sequence_alloc_for_primitive_type {
                 in_seq: *const Sequence<$rust_type>,
                 out_seq: *mut Sequence<$rust_type>,
             ) -> bool;
+        }
+
+        // Primitive sequences carry the layout flags from Lyrical on.
+        #[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+        impl SequenceLayout for $rust_type {
+            type LayoutTail = crate::BufferFlags;
+        }
+        #[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+        impl SequenceLayout for $rust_type {
+            type LayoutTail = ();
         }
 
         impl SequenceAlloc for $rust_type {

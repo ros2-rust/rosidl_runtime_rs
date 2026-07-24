@@ -17,7 +17,39 @@ cfg_if::cfg_if! {
     }
 }
 
+// Gate the primitive-sequence layout on the ROS distro, like other distro
+// differences in rclrs (starting with Lyrical, primitive sequences carry extra
+// ABI flags; see `Sequence`/`BufferFlags`).
+const ROS_DISTRO: &str = "ROS_DISTRO";
+const KNOWN_DISTROS: &[&str] = &["humble", "jazzy", "kilted", "lyrical", "rolling"];
+
+fn get_ros_distro() -> String {
+    std::env::var(ROS_DISTRO)
+        .or_else(|_| {
+            if std::env::var("CARGO_FEATURE_USE_ROS_SHIM").is_ok() {
+                rustflags::from_env()
+                    .find_map(|f| match f {
+                        rustflags::Flag::Cfg { name, value } if name.as_str() == "ros_distro" => {
+                            value
+                        }
+                        _ => None,
+                    })
+                    .ok_or_else(|| "Missing --cfg ros_distro in RUSTFLAGS".to_string())
+            } else {
+                Err(format!("Set {ROS_DISTRO} or use ROS shim"))
+            }
+        })
+        .expect("Failed to determine ROS distro")
+}
+
 fn main() {
+    println!(
+        "cargo:rustc-check-cfg=cfg(ros_distro, values(\"{}\"))",
+        KNOWN_DISTROS.join("\", \"")
+    );
+    println!("cargo:rustc-cfg=ros_distro=\"{}\"", get_ros_distro());
+    println!("cargo:rerun-if-env-changed={ROS_DISTRO}");
+
     #[cfg(not(feature = "use_ros_shim"))]
     {
         let ament_prefix_path_list = get_env_var_or_abort(AMENT_PREFIX_PATH);

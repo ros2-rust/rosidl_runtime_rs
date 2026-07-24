@@ -10,7 +10,7 @@ use std::{
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::{sequence::Sequence, traits::SequenceAlloc};
+use crate::{sequence::Sequence, traits::SequenceAlloc, traits::SequenceLayout};
 
 /// A zero-terminated UTF-8 string.
 ///
@@ -261,6 +261,10 @@ macro_rules! string_impl {
         // SAFETY: A string does not have interior mutability, so it can be shared.
         unsafe impl Sync for $string {}
 
+        impl SequenceLayout for $string {
+            type LayoutTail = ();
+        }
+
         impl SequenceAlloc for $string {
             fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool {
                 // SAFETY: There are no special preconditions to the sequence_init function.
@@ -387,6 +391,10 @@ impl<const N: usize> Display for BoundedString<N> {
     }
 }
 
+impl<const N: usize> SequenceLayout for BoundedString<N> {
+    type LayoutTail = ();
+}
+
 impl<const N: usize> SequenceAlloc for BoundedString<N> {
     fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool {
         // SAFETY: There are no special preconditions to the rosidl_runtime_c__String__Sequence__init function.
@@ -451,6 +459,10 @@ impl<const N: usize> Display for BoundedWString<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         Display::fmt(&self.inner, f)
     }
+}
+
+impl<const N: usize> SequenceLayout for BoundedWString<N> {
+    type LayoutTail = ();
 }
 
 impl<const N: usize> SequenceAlloc for BoundedWString<N> {
