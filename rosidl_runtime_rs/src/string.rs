@@ -261,6 +261,14 @@ macro_rules! string_impl {
         // SAFETY: A string does not have interior mutability, so it can be shared.
         unsafe impl Sync for $string {}
 
+        // `String`/`U16String` sequences come from the SAME
+        // ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE macro as the primitive ones
+        // (rosidl_runtime_c/string.h), so they carry the flags too.
+        #[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+        impl SequenceLayout for $string {
+            type LayoutTail = crate::BufferFlags;
+        }
+        #[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
         impl SequenceLayout for $string {
             type LayoutTail = ();
         }
@@ -391,6 +399,12 @@ impl<const N: usize> Display for BoundedString<N> {
     }
 }
 
+// A bounded string sequence is the same C struct as the unbounded one.
+#[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+impl<const N: usize> SequenceLayout for BoundedString<N> {
+    type LayoutTail = crate::BufferFlags;
+}
+#[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
 impl<const N: usize> SequenceLayout for BoundedString<N> {
     type LayoutTail = ();
 }
@@ -461,6 +475,12 @@ impl<const N: usize> Display for BoundedWString<N> {
     }
 }
 
+// A bounded string sequence is the same C struct as the unbounded one.
+#[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+impl<const N: usize> SequenceLayout for BoundedWString<N> {
+    type LayoutTail = crate::BufferFlags;
+}
+#[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
 impl<const N: usize> SequenceLayout for BoundedWString<N> {
     type LayoutTail = ();
 }

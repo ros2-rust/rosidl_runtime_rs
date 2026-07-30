@@ -715,6 +715,48 @@ mod tests {
         }
     }
 
+    /// The Rust `Sequence` must be the same size as the C
+    /// `rosidl_runtime_c__<T>__Sequence` it is cast to. From Lyrical on, every
+    /// type declared through ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE gained two
+    /// trailing `bool` flags, and that macro covers `String`/`U16String` as well
+    /// as the numeric primitives. Message element types keep the 3-field layout.
+    #[test]
+    fn test_sequence_layout_matches_c() {
+        // Mirrors of the two C shapes, so the expected size includes the same
+        // padding the C compiler applies rather than a hand-computed number.
+        #[repr(C)]
+        struct CSequence {
+            data: *mut u8,
+            size: usize,
+            capacity: usize,
+        }
+        #[repr(C)]
+        struct CSequenceWithFlags {
+            data: *mut u8,
+            size: usize,
+            capacity: usize,
+            flags: BufferFlags,
+        }
+        let expected = if cfg!(any(
+            ros_distro = "humble",
+            ros_distro = "jazzy",
+            ros_distro = "kilted"
+        )) {
+            std::mem::size_of::<CSequence>()
+        } else {
+            std::mem::size_of::<CSequenceWithFlags>()
+        };
+        assert_eq!(std::mem::size_of::<Sequence<f64>>(), expected);
+        assert_eq!(std::mem::size_of::<Sequence<u8>>(), expected);
+        assert_eq!(std::mem::size_of::<Sequence<crate::String>>(), expected);
+        assert_eq!(std::mem::size_of::<Sequence<crate::WString>>(), expected);
+        assert_eq!(std::mem::size_of::<BoundedSequence<f64, 4>>(), expected);
+        assert_eq!(
+            std::mem::size_of::<BoundedSequence<crate::String, 4>>(),
+            expected
+        );
+    }
+
     #[test]
     fn test_empty_sequence() {
         assert!(Sequence::<i32>::default().is_empty());
