@@ -715,46 +715,82 @@ mod tests {
         }
     }
 
-    /// The Rust `Sequence` must be the same size as the C
-    /// `rosidl_runtime_c__<T>__Sequence` it is cast to. From Lyrical on, every
-    /// type declared through ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE gained two
-    /// trailing `bool` flags, and that macro covers `String`/`U16String` as well
-    /// as the numeric primitives. Message element types keep the 3-field layout.
+    // The layout of the C structs, as reported by src/sequence_abi.c after the
+    // C compiler read the headers of this ROS installation.
+    #[cfg(has_c_abi_probe)]
+    extern "C" {
+        static rosidl_rs_primitive_sequence_size: usize;
+        static rosidl_rs_string_sequence_size: usize;
+        static rosidl_rs_u16string_sequence_size: usize;
+        static rosidl_rs_sequence_data_offset: usize;
+        static rosidl_rs_sequence_size_offset: usize;
+        static rosidl_rs_sequence_capacity_offset: usize;
+        static rosidl_rs_sequence_align: usize;
+    }
+
+    /// `Sequence<T>` is handed to C as `rosidl_runtime_c__<T>__Sequence`, so it
+    /// has to be the size of that struct in the installed headers. From Lyrical
+    /// on, every type declared through ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE
+    /// carries two trailing flags, and that macro covers `String` and
+    /// `U16String` as well as the numeric primitives.
     #[test]
-    fn test_sequence_layout_matches_c() {
-        // Mirrors of the two C shapes, so the expected size includes the same
-        // padding the C compiler applies rather than a hand-computed number.
-        #[repr(C)]
-        struct CSequence {
-            data: *mut u8,
-            size: usize,
-            capacity: usize,
-        }
-        #[repr(C)]
-        struct CSequenceWithFlags {
-            data: *mut u8,
-            size: usize,
-            capacity: usize,
-            flags: BufferFlags,
-        }
-        let expected = if cfg!(any(
-            ros_distro = "humble",
-            ros_distro = "jazzy",
-            ros_distro = "kilted"
-        )) {
-            std::mem::size_of::<CSequence>()
-        } else {
-            std::mem::size_of::<CSequenceWithFlags>()
+    #[cfg(has_c_abi_probe)]
+    fn test_sequence_size_matches_c() {
+        // SAFETY: These are `const size_t` objects with external linkage.
+        let (primitive, string, u16string) = unsafe {
+            (
+                rosidl_rs_primitive_sequence_size,
+                rosidl_rs_string_sequence_size,
+                rosidl_rs_u16string_sequence_size,
+            )
         };
-        assert_eq!(std::mem::size_of::<Sequence<f64>>(), expected);
-        assert_eq!(std::mem::size_of::<Sequence<u8>>(), expected);
-        assert_eq!(std::mem::size_of::<Sequence<crate::String>>(), expected);
-        assert_eq!(std::mem::size_of::<Sequence<crate::WString>>(), expected);
-        assert_eq!(std::mem::size_of::<BoundedSequence<f64, 4>>(), expected);
+
+        assert_eq!(std::mem::size_of::<Sequence<f64>>(), primitive);
+        assert_eq!(std::mem::size_of::<Sequence<u8>>(), primitive);
+        assert_eq!(std::mem::size_of::<Sequence<i16>>(), primitive);
+        assert_eq!(std::mem::size_of::<Sequence<bool>>(), primitive);
+        assert_eq!(std::mem::size_of::<BoundedSequence<f64, 4>>(), primitive);
+
+        assert_eq!(std::mem::size_of::<Sequence<crate::String>>(), string);
         assert_eq!(
             std::mem::size_of::<BoundedSequence<crate::String, 4>>(),
-            expected
+            string
         );
+        assert_eq!(
+            std::mem::size_of::<Sequence<crate::BoundedString<4>>>(),
+            string
+        );
+
+        assert_eq!(std::mem::size_of::<Sequence<crate::WString>>(), u16string);
+        assert_eq!(
+            std::mem::size_of::<BoundedSequence<crate::WString, 4>>(),
+            u16string
+        );
+        assert_eq!(
+            std::mem::size_of::<Sequence<crate::BoundedWString<4>>>(),
+            u16string
+        );
+    }
+
+    /// A matching size is not enough on its own, because it says nothing about
+    /// the order of the fields C reads and writes.
+    #[test]
+    #[cfg(has_c_abi_probe)]
+    fn test_sequence_field_offsets_match_c() {
+        // SAFETY: These are `const size_t` objects with external linkage.
+        let (data, size, capacity, align) = unsafe {
+            (
+                rosidl_rs_sequence_data_offset,
+                rosidl_rs_sequence_size_offset,
+                rosidl_rs_sequence_capacity_offset,
+                rosidl_rs_sequence_align,
+            )
+        };
+
+        assert_eq!(std::mem::offset_of!(Sequence<f64>, data), data);
+        assert_eq!(std::mem::offset_of!(Sequence<f64>, size), size);
+        assert_eq!(std::mem::offset_of!(Sequence<f64>, capacity), capacity);
+        assert_eq!(std::mem::align_of::<Sequence<f64>>(), align);
     }
 
     #[test]

@@ -542,6 +542,30 @@ mod tests {
 
     use super::*;
 
+    // The layout of the C structs, as reported by src/sequence_abi.c after the
+    // C compiler read the headers of this ROS installation.
+    #[cfg(has_c_abi_probe)]
+    extern "C" {
+        static rosidl_rs_string_size: usize;
+        static rosidl_rs_u16string_size: usize;
+    }
+
+    /// The buffer flags belong to the sequence structs, not to the string
+    /// structs, so these sizes have to stay the same on every distro. Getting
+    /// this wrong the other way around would shift every field of a message
+    /// that holds a string.
+    #[test]
+    #[cfg(has_c_abi_probe)]
+    fn test_string_size_matches_c() {
+        // SAFETY: These are `const size_t` objects with external linkage.
+        let (string, u16string) = unsafe { (rosidl_rs_string_size, rosidl_rs_u16string_size) };
+
+        assert_eq!(std::mem::size_of::<String>(), string);
+        assert_eq!(std::mem::size_of::<BoundedString<4>>(), string);
+        assert_eq!(std::mem::size_of::<WString>(), u16string);
+        assert_eq!(std::mem::size_of::<BoundedWString<4>>(), u16string);
+    }
+
     impl Arbitrary for String {
         fn arbitrary(g: &mut Gen) -> Self {
             std::string::String::arbitrary(g).as_str().into()

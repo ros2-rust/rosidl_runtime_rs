@@ -14,6 +14,27 @@ cfg_if::cfg_if! {
                 );
             }
         }
+
+        /// Compiles the probe that reports the layout of the installed C
+        /// sequence structs, so that the tests can check `Sequence<T>` against
+        /// this ROS installation instead of against a Rust recreation of those
+        /// structs.
+        #[cfg(feature = "abi_check")]
+        fn compile_sequence_abi_probe(ament_prefix_path_list: &str) {
+            let mut probe = cc::Build::new();
+            for ament_prefix_path in ament_prefix_path_list.split(':') {
+                // Iron and later nest the headers of a package one level
+                // deeper, so offer both conventions and let the compiler pick.
+                let include_path = Path::new(ament_prefix_path).join("include");
+                probe.include(include_path.join("rosidl_runtime_c"));
+                probe.include(include_path);
+            }
+            probe
+                .file("src/sequence_abi.c")
+                .compile("rosidl_rs_sequence_abi");
+
+            println!("cargo:rustc-cfg=has_c_abi_probe");
+        }
     }
 }
 
@@ -49,6 +70,7 @@ fn main() {
     );
     println!("cargo:rustc-cfg=ros_distro=\"{}\"", get_ros_distro());
     println!("cargo:rerun-if-env-changed={ROS_DISTRO}");
+    println!("cargo:rustc-check-cfg=cfg(has_c_abi_probe)");
 
     #[cfg(not(feature = "use_ros_shim"))]
     {
@@ -57,6 +79,9 @@ fn main() {
             let library_path = ament_prefix_path.join("lib");
             println!("cargo:rustc-link-search=native={}", library_path.display());
         }
+
+        #[cfg(feature = "abi_check")]
+        compile_sequence_abi_probe(&ament_prefix_path_list);
     }
 
     // Invalidate the built crate whenever this script changes
