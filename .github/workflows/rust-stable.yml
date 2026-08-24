@@ -37,7 +37,7 @@ jobs:
             ros_distribution: lyrical
             ros_version: 2
           # Rolling Ridley  (June 2020 - Present)
-          - docker_image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
+          - docker_image: rostooling/setup-ros-docker:ubuntu-resolute-ros-rolling-ros-base-latest
             ros_distribution: rolling
             ros_version: 2
 
@@ -58,6 +58,13 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         components: clippy, rustfmt
+
+    # Installing the ros metapackage (in setup-ros) leaves the packages already baked into the image
+    # untouched. This forces an upgrade of all packages to test against the latest available versions.
+    - name: Update environment and force upgrade new packages
+      run: |
+        sudo apt-get update
+        sudo apt-get dist-upgrade -y
 
     - name: Test default features
       run: |
