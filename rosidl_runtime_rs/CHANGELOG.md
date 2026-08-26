@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.6.0...v0.6.1) - 2026-06-08
+
+### Other
+
+- *(sequence)* add From<Sequence<T>> for Vec<T> with Copy bound ([#20](https://github.com/ros2-rust/rosidl_runtime_rs/pull/20))
+
 ## [0.6.0](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.5.0...v0.6.0) - 2026-01-14
 
 ### Other
