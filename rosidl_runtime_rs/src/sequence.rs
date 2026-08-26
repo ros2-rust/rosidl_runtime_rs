@@ -9,7 +9,7 @@ use std::{
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::traits::SequenceAlloc;
+use crate::traits::{PrimitiveSequenceAlloc, SequenceAlloc};
 
 /// An unbounded sequence.
 ///
@@ -23,18 +23,15 @@ use crate::traits::SequenceAlloc;
 /// # Example
 ///
 /// ```
-/// # use rosidl_runtime_rs::{Sequence, seq};
-/// let mut list = Sequence::<i32>::new(3);
+/// # use rosidl_runtime_rs::{Sequence, String, seq};
+/// let mut list = Sequence::<String>::new(3);
 /// // Sequences deref to slices
-/// assert_eq!(&list[..], &[0, 0, 0]);
-/// list[0] = 3;
-/// list[1] = 2;
-/// list[2] = 1;
-/// assert_eq!(&list[..], &[3, 2, 1]);
+/// assert_eq!(list.len(), 3);
+/// list[0] = "three".into();
 /// // Alternatively, use the seq! macro
-/// list = seq![3, 2, 1];
+/// list = seq!["three".into(), "two".into(), "one".into()];
 /// // The default sequence is empty
-/// assert!(Sequence::<i32>::default().is_empty());
+/// assert!(Sequence::<String>::default().is_empty());
 /// ```
 #[repr(C)]
 pub struct Sequence<T: SequenceAlloc> {
@@ -55,18 +52,15 @@ pub struct Sequence<T: SequenceAlloc> {
 /// # Example
 ///
 /// ```
-/// # use rosidl_runtime_rs::{BoundedSequence, seq};
-/// let mut list = BoundedSequence::<i32, 5>::new(3);
+/// # use rosidl_runtime_rs::{BoundedSequence, String, seq};
+/// let mut list = BoundedSequence::<String, 5>::new(3);
 /// // BoundedSequences deref to slices
-/// assert_eq!(&list[..], &[0, 0, 0]);
-/// list[0] = 3;
-/// list[1] = 2;
-/// list[2] = 1;
-/// assert_eq!(&list[..], &[3, 2, 1]);
+/// assert_eq!(list.len(), 3);
+/// list[0] = "three".into();
 /// // Alternatively, use the seq! macro with the length specifier
-/// list = seq![5 # 3, 2, 1];
+/// list = seq![5 # "three".into(), "two".into(), "one".into()];
 /// // The default bounded sequence is empty
-/// assert!(BoundedSequence::<i32, 5>::default().is_empty());
+/// assert!(BoundedSequence::<String, 5>::default().is_empty());
 /// ```
 #[derive(Clone)]
 #[repr(transparent)]
@@ -499,6 +493,429 @@ impl<T: SequenceAlloc> ExactSizeIterator for SequenceIterator<T> {
 
 impl<T: SequenceAlloc> FusedIterator for SequenceIterator<T> {}
 
+/// An ABI-compatible `rosidl_runtime_c` primitive sequence.
+#[repr(C)]
+pub struct PrimitiveSequence<T: PrimitiveSequenceAlloc> {
+    data: *mut T,
+    size: usize,
+    capacity: usize,
+    is_rosidl_buffer: bool,
+    owns_rosidl_buffer: bool,
+}
+
+/// A bounded primitive sequence.
+#[derive(Clone)]
+#[repr(transparent)]
+pub struct BoundedPrimitiveSequence<T: PrimitiveSequenceAlloc, const N: usize> {
+    inner: PrimitiveSequence<T>,
+}
+
+/// A by-value iterator over a normal, C-allocated primitive sequence.
+pub struct PrimitiveSequenceIterator<T: PrimitiveSequenceAlloc> {
+    seq: PrimitiveSequence<T>,
+    idx: usize,
+}
+
+impl<T: PrimitiveSequenceAlloc> PrimitiveSequence<T> {
+    /// Creates a sequence of `len` zero-initialized elements.
+    pub fn new(len: usize) -> Self {
+        let mut seq = Self::default();
+        if !T::primitive_sequence_init(&mut seq, len) {
+            panic!("PrimitiveSequence initialization failed");
+        }
+        seq
+    }
+
+    /// Returns whether this sequence contains an opaque `rosidl::Buffer<T>`.
+    pub fn is_rosidl_buffer(&self) -> bool {
+        self.is_rosidl_buffer
+    }
+
+    /// Returns the number of elements represented by the sequence.
+    pub fn len(&self) -> usize {
+        self.size
+    }
+
+    /// Returns whether the sequence contains no elements.
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
+    /// Extracts a slice from a normal primitive sequence.
+    ///
+    /// Panics when the C sequence contains an opaque `rosidl::Buffer<T>`.
+    pub fn as_slice(&self) -> &[T] {
+        self.assert_contiguous();
+        if self.data.is_null() {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.data, self.size) }
+        }
+    }
+
+    /// Extracts a mutable slice from a normal primitive sequence.
+    ///
+    /// Panics when the C sequence contains an opaque `rosidl::Buffer<T>`.
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        self.assert_contiguous();
+        if self.data.is_null() {
+            &mut []
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(self.data, self.size) }
+        }
+    }
+
+    fn assert_contiguous(&self) {
+        assert!(
+            !self.is_rosidl_buffer,
+            "an opaque rosidl buffer cannot be viewed as a primitive slice"
+        );
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> Clone for PrimitiveSequence<T> {
+    fn clone(&self) -> Self {
+        let mut seq = Self::default();
+        if !T::primitive_sequence_copy(self, &mut seq) {
+            panic!("Cloning PrimitiveSequence failed");
+        }
+        seq
+    }
+}
+
+impl<T: Debug + PrimitiveSequenceAlloc> Debug for PrimitiveSequence<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_slice().fmt(f)
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> Default for PrimitiveSequence<T> {
+    fn default() -> Self {
+        Self {
+            data: std::ptr::null_mut(),
+            size: 0,
+            capacity: 0,
+            is_rosidl_buffer: false,
+            owns_rosidl_buffer: false,
+        }
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> Deref for PrimitiveSequence<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> DerefMut for PrimitiveSequence<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> Drop for PrimitiveSequence<T> {
+    fn drop(&mut self) {
+        T::primitive_sequence_fini(self);
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> Extend<T> for PrimitiveSequence<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.assert_contiguous();
+        let old_len = self.size;
+        let appended: Vec<T> = iter.into_iter().collect();
+        if appended.is_empty() {
+            return;
+        }
+        let replacement = Self::new(old_len.saturating_add(appended.len()));
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.data, replacement.data, old_len);
+            std::ptr::copy_nonoverlapping(
+                appended.as_ptr(),
+                replacement.data.add(old_len),
+                appended.len(),
+            );
+        }
+        *self = replacement;
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Copy> From<&[T]> for PrimitiveSequence<T> {
+    fn from(slice: &[T]) -> Self {
+        let mut seq = Self::new(slice.len());
+        seq.as_mut_slice().copy_from_slice(slice);
+        seq
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> From<Vec<T>> for PrimitiveSequence<T> {
+    fn from(values: Vec<T>) -> Self {
+        values.into_iter().collect()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Copy> From<PrimitiveSequence<T>> for Vec<T> {
+    fn from(seq: PrimitiveSequence<T>) -> Self {
+        seq.as_slice().to_vec()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> FromIterator<T> for PrimitiveSequence<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let values: Vec<T> = iter.into_iter().collect();
+        let seq = Self::new(values.len());
+        unsafe {
+            std::ptr::copy_nonoverlapping(values.as_ptr(), seq.data, values.len());
+        }
+        seq
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> IntoIterator for PrimitiveSequence<T> {
+    type Item = T;
+    type IntoIter = PrimitiveSequenceIterator<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.assert_contiguous();
+        PrimitiveSequenceIterator { seq: self, idx: 0 }
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + PartialEq> PartialEq for PrimitiveSequence<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Eq> Eq for PrimitiveSequence<T> {}
+
+impl<T: PrimitiveSequenceAlloc + PartialOrd> PartialOrd for PrimitiveSequence<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.as_slice().partial_cmp(other.as_slice())
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Ord> Ord for PrimitiveSequence<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_slice().cmp(other.as_slice())
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Hash> Hash for PrimitiveSequence<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_slice().hash(state);
+    }
+}
+
+unsafe impl<T: PrimitiveSequenceAlloc + Send> Send for PrimitiveSequence<T> {}
+unsafe impl<T: PrimitiveSequenceAlloc + Sync> Sync for PrimitiveSequence<T> {}
+
+impl PrimitiveSequence<u8> {
+    /// Takes ownership of an opaque `rosidl::Buffer<u8>`.
+    ///
+    /// # Safety
+    ///
+    /// `buffer` must be a non-null pointer returned by the ROS IDL Buffer API,
+    /// `size` must be its byte length, and ownership must not be retained
+    /// elsewhere.
+    pub unsafe fn from_owned_rosidl_buffer(
+        buffer: *mut std::ffi::c_void,
+        size: usize,
+    ) -> Option<Self> {
+        if buffer.is_null() {
+            return None;
+        }
+        Some(Self {
+            data: buffer.cast(),
+            size,
+            capacity: size,
+            is_rosidl_buffer: true,
+            owns_rosidl_buffer: true,
+        })
+    }
+
+    /// Returns the opaque Buffer pointer when this sequence is Buffer-backed.
+    pub fn rosidl_buffer_ptr(&self) -> Option<*mut std::ffi::c_void> {
+        self.is_rosidl_buffer.then_some(self.data.cast())
+    }
+
+    /// Releases and returns the owned opaque Buffer pointer.
+    ///
+    /// Returns `Err(self)` for normal sequences or non-owning Buffer views.
+    pub fn into_owned_rosidl_buffer(mut self) -> Result<*mut std::ffi::c_void, Self> {
+        if !self.is_rosidl_buffer || !self.owns_rosidl_buffer {
+            return Err(self);
+        }
+        let buffer = self.data.cast();
+        self.data = std::ptr::null_mut();
+        self.size = 0;
+        self.capacity = 0;
+        self.is_rosidl_buffer = false;
+        self.owns_rosidl_buffer = false;
+        Ok(buffer)
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> BoundedPrimitiveSequence<T, N> {
+    /// Creates a bounded sequence of `len` zero-initialized elements.
+    pub fn new(len: usize) -> Self {
+        Self::try_new(len).unwrap()
+    }
+
+    /// Attempts to create a bounded sequence.
+    pub fn try_new(len: usize) -> Result<Self, SequenceExceedsBoundsError> {
+        if len > N {
+            return Err(SequenceExceedsBoundsError {
+                len,
+                upper_bound: N,
+            });
+        }
+        Ok(Self {
+            inner: PrimitiveSequence::new(len),
+        })
+    }
+
+    /// Returns whether this sequence contains an opaque `rosidl::Buffer<T>`.
+    pub fn is_rosidl_buffer(&self) -> bool {
+        self.inner.is_rosidl_buffer()
+    }
+
+    /// Extracts a slice from a normal bounded primitive sequence.
+    pub fn as_slice(&self) -> &[T] {
+        self.inner.as_slice()
+    }
+
+    /// Extracts a mutable slice from a normal bounded primitive sequence.
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        self.inner.as_mut_slice()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> Default for BoundedPrimitiveSequence<T, N> {
+    fn default() -> Self {
+        Self {
+            inner: PrimitiveSequence::default(),
+        }
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Debug, const N: usize> Debug for BoundedPrimitiveSequence<T, N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> Deref for BoundedPrimitiveSequence<T, N> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.deref()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> DerefMut for BoundedPrimitiveSequence<T, N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner.deref_mut()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> TryFrom<Vec<T>> for BoundedPrimitiveSequence<T, N> {
+    type Error = SequenceExceedsBoundsError;
+
+    fn try_from(values: Vec<T>) -> Result<Self, Self::Error> {
+        if values.len() > N {
+            return Err(SequenceExceedsBoundsError {
+                len: values.len(),
+                upper_bound: N,
+            });
+        }
+        Ok(Self {
+            inner: values.into(),
+        })
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Copy, const N: usize> TryFrom<&[T]>
+    for BoundedPrimitiveSequence<T, N>
+{
+    type Error = SequenceExceedsBoundsError;
+
+    fn try_from(values: &[T]) -> Result<Self, Self::Error> {
+        Self::try_from(values.to_vec())
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> FromIterator<T> for BoundedPrimitiveSequence<T, N> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let values: Vec<T> = iter.into_iter().take(N).collect();
+        Self {
+            inner: values.into(),
+        }
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc, const N: usize> IntoIterator for BoundedPrimitiveSequence<T, N> {
+    type Item = T;
+    type IntoIter = PrimitiveSequenceIterator<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + PartialEq, const N: usize> PartialEq
+    for BoundedPrimitiveSequence<T, N>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Eq, const N: usize> Eq for BoundedPrimitiveSequence<T, N> {}
+
+impl<T: PrimitiveSequenceAlloc + PartialOrd, const N: usize> PartialOrd
+    for BoundedPrimitiveSequence<T, N>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.inner.partial_cmp(&other.inner)
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Ord, const N: usize> Ord for BoundedPrimitiveSequence<T, N> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.inner.cmp(&other.inner)
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc + Hash, const N: usize> Hash for BoundedPrimitiveSequence<T, N> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> Iterator for PrimitiveSequenceIterator<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx >= self.seq.size {
+            return None;
+        }
+        let elem = unsafe { self.seq.data.add(self.idx).read() };
+        self.idx += 1;
+        Some(elem)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.seq.size - self.idx;
+        (len, Some(len))
+    }
+}
+
+impl<T: PrimitiveSequenceAlloc> ExactSizeIterator for PrimitiveSequenceIterator<T> {}
+impl<T: PrimitiveSequenceAlloc> FusedIterator for PrimitiveSequenceIterator<T> {}
+
 // ========================= impl for StringExceedsBoundsError =========================
 
 impl Display for SequenceExceedsBoundsError {
@@ -513,37 +930,35 @@ impl Display for SequenceExceedsBoundsError {
 
 impl std::error::Error for SequenceExceedsBoundsError {}
 
-macro_rules! impl_sequence_alloc_for_primitive_type {
+macro_rules! impl_primitive_sequence_alloc {
     ($rust_type:ty, $init_func:ident, $fini_func:ident, $copy_func:ident) => {
         #[link(name = "rosidl_runtime_c")]
         unsafe extern "C" {
-            fn $init_func(seq: *mut Sequence<$rust_type>, size: usize) -> bool;
-            fn $fini_func(seq: *mut Sequence<$rust_type>);
+            fn $init_func(seq: *mut PrimitiveSequence<$rust_type>, size: usize) -> bool;
+            fn $fini_func(seq: *mut PrimitiveSequence<$rust_type>);
             fn $copy_func(
-                in_seq: *const Sequence<$rust_type>,
-                out_seq: *mut Sequence<$rust_type>,
+                in_seq: *const PrimitiveSequence<$rust_type>,
+                out_seq: *mut PrimitiveSequence<$rust_type>,
             ) -> bool;
         }
 
-        impl SequenceAlloc for $rust_type {
-            fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool {
-                // SAFETY: There are no special preconditions to the sequence_init function.
+        impl PrimitiveSequenceAlloc for $rust_type {
+            fn primitive_sequence_init(seq: &mut PrimitiveSequence<Self>, size: usize) -> bool {
                 unsafe {
-                    // This allocates space and sets seq.size and seq.capacity to size
                     let ret = $init_func(seq as *mut _, size);
                     if !seq.data.is_null() {
-                        // Zero memory, since it will be uninitialized if there is no default value
                         std::ptr::write_bytes(seq.data, 0u8, size);
                     }
                     ret
                 }
             }
-            fn sequence_fini(seq: &mut Sequence<Self>) {
-                // SAFETY: There are no special preconditions to the sequence_fini function.
+            fn primitive_sequence_fini(seq: &mut PrimitiveSequence<Self>) {
                 unsafe { $fini_func(seq as *mut _) }
             }
-            fn sequence_copy(in_seq: &Sequence<Self>, out_seq: &mut Sequence<Self>) -> bool {
-                // SAFETY: There are no special preconditions to the sequence_copy function.
+            fn primitive_sequence_copy(
+                in_seq: &PrimitiveSequence<Self>,
+                out_seq: &mut PrimitiveSequence<Self>,
+            ) -> bool {
                 unsafe { $copy_func(in_seq as *const _, out_seq as *mut _) }
             }
         }
@@ -554,67 +969,67 @@ macro_rules! impl_sequence_alloc_for_primitive_type {
 //
 // See https://github.com/ros2/rosidl/blob/master/rosidl_runtime_c/include/rosidl_runtime_c/primitives_sequence.h
 // Long double isn't available in Rust, so it is skipped.
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     f32,
     rosidl_runtime_c__float__Sequence__init,
     rosidl_runtime_c__float__Sequence__fini,
     rosidl_runtime_c__float__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     f64,
     rosidl_runtime_c__double__Sequence__init,
     rosidl_runtime_c__double__Sequence__fini,
     rosidl_runtime_c__double__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     bool,
     rosidl_runtime_c__boolean__Sequence__init,
     rosidl_runtime_c__boolean__Sequence__fini,
     rosidl_runtime_c__boolean__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     u8,
     rosidl_runtime_c__uint8__Sequence__init,
     rosidl_runtime_c__uint8__Sequence__fini,
     rosidl_runtime_c__uint8__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     i8,
     rosidl_runtime_c__int8__Sequence__init,
     rosidl_runtime_c__int8__Sequence__fini,
     rosidl_runtime_c__int8__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     u16,
     rosidl_runtime_c__uint16__Sequence__init,
     rosidl_runtime_c__uint16__Sequence__fini,
     rosidl_runtime_c__uint16__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     i16,
     rosidl_runtime_c__int16__Sequence__init,
     rosidl_runtime_c__int16__Sequence__fini,
     rosidl_runtime_c__int16__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     u32,
     rosidl_runtime_c__uint32__Sequence__init,
     rosidl_runtime_c__uint32__Sequence__fini,
     rosidl_runtime_c__uint32__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     i32,
     rosidl_runtime_c__int32__Sequence__init,
     rosidl_runtime_c__int32__Sequence__fini,
     rosidl_runtime_c__int32__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     u64,
     rosidl_runtime_c__uint64__Sequence__init,
     rosidl_runtime_c__uint64__Sequence__fini,
     rosidl_runtime_c__uint64__Sequence__copy
 );
-impl_sequence_alloc_for_primitive_type!(
+impl_primitive_sequence_alloc!(
     i64,
     rosidl_runtime_c__int64__Sequence__init,
     rosidl_runtime_c__int64__Sequence__fini,
@@ -623,49 +1038,26 @@ impl_sequence_alloc_for_primitive_type!(
 
 /// Creates a sequence, similar to the `vec!` macro.
 ///
-/// It's possible to create both [`Sequence`]s and [`BoundedSequence`]s.
+/// It's possible to create message and primitive sequences.
 /// Unbounded sequences are created by a comma-separated list of values.
 /// Bounded sequences are created by additionally specifying the maximum capacity (the `N` type
 /// parameter) in the beginning, followed by a `#`.
 ///
 /// # Example
 /// ```
-/// # use rosidl_runtime_rs::{BoundedSequence, Sequence, seq};
-/// let unbounded: Sequence<i32> = seq![1, 2, 3];
-/// let bounded: BoundedSequence<i32, 5> = seq![5 # 1, 2, 3];
+/// # use rosidl_runtime_rs::{BoundedPrimitiveSequence, PrimitiveSequence, seq};
+/// let unbounded: PrimitiveSequence<i32> = seq![1, 2, 3];
+/// let bounded: BoundedPrimitiveSequence<i32, 5> = seq![5 # 1, 2, 3];
 /// assert_eq!(&unbounded[..], &bounded[..])
 /// ```
 #[macro_export]
 macro_rules! seq {
     [$( $elem:expr ),*] => {
-        {
-            let len = seq!(@count_tts $($elem),*);
-            let mut seq = Sequence::new(len);
-            let mut i = 0;
-            $(
-                seq[i] = $elem;
-                #[allow(unused_assignments)]
-                { i += 1; }
-            )*
-            seq
-        }
+        vec![$($elem),*].into()
     };
     [$len:literal # $( $elem:expr ),*] => {
-        {
-            let len = seq!(@count_tts $($elem),*);
-            let mut seq = BoundedSequence::<_, $len>::new(len);
-            let mut i = 0;
-            $(
-                seq[i] = $elem;
-                #[allow(unused_assignments)]
-                { i += 1; }
-            )*
-            seq
-        }
+        ::std::convert::TryInto::try_into(vec![$($elem),*]).unwrap()
     };
-    // https://danielkeep.github.io/tlborm/book/blk-counting.html
-    (@replace_expr ($_t:expr, $sub:expr)) => {$sub};
-    (@count_tts $($e:expr),*) => {<[()]>::len(&[$(seq!(@replace_expr ($e, ()))),*])};
 }
 
 #[cfg(test)]
@@ -674,13 +1066,13 @@ mod tests {
 
     use super::*;
 
-    impl<T: Arbitrary + SequenceAlloc> Arbitrary for Sequence<T> {
+    impl<T: Arbitrary + PrimitiveSequenceAlloc> Arbitrary for PrimitiveSequence<T> {
         fn arbitrary(g: &mut Gen) -> Self {
             Vec::arbitrary(g).into()
         }
     }
 
-    impl<T: Arbitrary + SequenceAlloc> Arbitrary for BoundedSequence<T, 256> {
+    impl<T: Arbitrary + PrimitiveSequenceAlloc> Arbitrary for BoundedPrimitiveSequence<T, 256> {
         fn arbitrary(g: &mut Gen) -> Self {
             let len = u8::arbitrary(g);
             (0..len).map(|_| T::arbitrary(g)).collect()
@@ -689,13 +1081,46 @@ mod tests {
 
     #[test]
     fn test_empty_sequence() {
-        assert!(Sequence::<i32>::default().is_empty());
-        assert!(BoundedSequence::<i32, 5>::default().is_empty());
+        assert!(PrimitiveSequence::<i32>::default().is_empty());
+        assert!(BoundedPrimitiveSequence::<i32, 5>::default().is_empty());
+    }
+
+    #[test]
+    fn test_sequence_layouts() {
+        let primitive_fields_size =
+            std::mem::size_of::<*mut u8>() + 2 * std::mem::size_of::<usize>() + 2;
+        let alignment = std::mem::align_of::<PrimitiveSequence<u8>>();
+        let expected_primitive_size =
+            ((primitive_fields_size + alignment - 1) / alignment) * alignment;
+        assert_eq!(
+            std::mem::size_of::<PrimitiveSequence<u8>>(),
+            expected_primitive_size
+        );
+        assert_eq!(
+            std::mem::size_of::<BoundedPrimitiveSequence<u8, 4>>(),
+            expected_primitive_size
+        );
+        assert_eq!(
+            std::mem::size_of::<Sequence<crate::String>>(),
+            std::mem::size_of::<*mut crate::String>() + 2 * std::mem::size_of::<usize>()
+        );
+    }
+
+    #[test]
+    fn test_buffer_sequence_rejects_slice_access() {
+        let seq = std::mem::ManuallyDrop::new(PrimitiveSequence::<u8> {
+            data: std::ptr::null_mut(),
+            size: 0,
+            capacity: 0,
+            is_rosidl_buffer: true,
+            owns_rosidl_buffer: false,
+        });
+        assert!(std::panic::catch_unwind(|| seq.as_slice()).is_err());
     }
 
     quickcheck! {
         fn test_extend(xs: Vec<i32>, ys: Vec<i32>) -> bool {
-            let mut xs_seq = Sequence::new(xs.len());
+            let mut xs_seq = PrimitiveSequence::new(xs.len());
             xs_seq.copy_from_slice(&xs);
             xs_seq.extend(ys.clone());
             if xs_seq.len() != xs.len() + ys.len() {
@@ -713,7 +1138,7 @@ mod tests {
 
     quickcheck! {
         fn test_iteration(xs: Vec<i32>) -> bool {
-            let mut seq_1 = Sequence::new(xs.len());
+            let mut seq_1 = PrimitiveSequence::new(xs.len());
             seq_1.copy_from_slice(&xs);
             let seq_2 = seq_1.clone().into_iter().collect();
             seq_1 == seq_2
@@ -723,14 +1148,14 @@ mod tests {
     #[test]
     fn test_into_vec_primitive_roundtrip() {
         let xs: Vec<i32> = (0..1024).collect();
-        let seq: Sequence<i32> = Sequence::from(&xs[..]);
+        let seq: PrimitiveSequence<i32> = PrimitiveSequence::from(&xs[..]);
         let ys: Vec<i32> = seq.into();
         assert_eq!(xs, ys);
     }
 
     quickcheck! {
         fn test_into_vec_primitive_quickcheck(xs: Vec<u8>) -> bool {
-            let seq: Sequence<u8> = Sequence::from(&xs[..]);
+            let seq: PrimitiveSequence<u8> = PrimitiveSequence::from(&xs[..]);
             let ys: Vec<u8> = seq.into();
             xs == ys
         }

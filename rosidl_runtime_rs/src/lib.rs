@@ -3,7 +3,10 @@
 
 #[macro_use]
 mod sequence;
-pub use sequence::{BoundedSequence, Sequence, SequenceExceedsBoundsError};
+pub use sequence::{
+    BoundedPrimitiveSequence, BoundedSequence, PrimitiveSequence, Sequence,
+    SequenceExceedsBoundsError,
+};
 
 mod string;
 pub use string::{BoundedString, BoundedWString, String, StringExceedsBoundsError, WString};
