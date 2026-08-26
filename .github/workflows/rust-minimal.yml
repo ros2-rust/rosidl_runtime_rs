@@ -5,11 +5,6 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  schedule:
-    # Run the CI at 01:22 UTC every Tuesday
-    # We pick an arbitrary time outside of most of the world's work hours
-    # to minimize the likelihood of running alongside a heavy workload.
-    - cron: '22 1 * * 2'
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,6 +17,7 @@ jobs:
           - humble
           - jazzy
           - kilted
+          - lyrical
           - rolling
         include:
           # Humble Hawksbill (May 2022 - May 2027)
@@ -36,8 +32,12 @@ jobs:
           - docker_image: rostooling/setup-ros-docker:ubuntu-noble-ros-kilted-ros-base-latest
             ros_distribution: kilted
             ros_version: 2
+          # Lyrical Luth (May 2026 - May 2031)
+          - docker_image: rostooling/setup-ros-docker:ubuntu-resolute-ros-lyrical-ros-base-latest
+            ros_distribution: lyrical
+            ros_version: 2
           # Rolling Ridley  (June 2020 - Present)
-          - docker_image: rostooling/setup-ros-docker:ubuntu-noble-ros-rolling-ros-base-latest
+          - docker_image: rostooling/setup-ros-docker:ubuntu-resolute-ros-rolling-ros-base-latest
             ros_distribution: rolling
             ros_version: 2
 
@@ -53,6 +53,13 @@ jobs:
       with:
         required-ros-distributions: ${{ matrix.ros_distribution }}
         use-ros2-testing: ${{ matrix.ros_distribution == 'rolling' }}
+    
+    # Installing the ros metapackage (in setup-ros) leaves the packages already baked into the image
+    # untouched. This forces an upgrade of all packages to test against the latest available versions.
+    - name: Update environment and force upgrade new packages
+      run: |
+        sudo apt-get update
+        sudo apt-get dist-upgrade -y
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@1.85
