@@ -23,6 +23,7 @@ default = []
 # The only intended usage of this feature is for docs.rs builders to work, and is not intended to be used by end users
 use_ros_shim = []
 # Adds the C compiler to build and link the C probe to test size/layout against the installed ROS 2 C headers
+# This is only intended to be used for testing, and is not intended to be used by end users
 abi_check = ["dep:cc"]
 
 [dev-dependencies]
