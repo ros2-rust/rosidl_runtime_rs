@@ -1,7 +1,6 @@
 cfg_if::cfg_if! {
     if #[cfg(not(feature="use_ros_shim"))] {
         use std::env;
-        use std::path::Path;
 
         const AMENT_PREFIX_PATH: &str = "AMENT_PREFIX_PATH";
 
