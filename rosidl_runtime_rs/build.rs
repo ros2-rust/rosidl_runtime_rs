@@ -1,7 +1,6 @@
 cfg_if::cfg_if! {
     if #[cfg(not(feature="use_ros_shim"))] {
         use std::env;
-        use std::path::Path;
 
         const AMENT_PREFIX_PATH: &str = "AMENT_PREFIX_PATH";
 
@@ -22,8 +21,8 @@ fn main() {
     #[cfg(not(feature = "use_ros_shim"))]
     {
         let ament_prefix_path_list = get_env_var_or_abort(AMENT_PREFIX_PATH);
-        for ament_prefix_path in ament_prefix_path_list.split(':') {
-            let library_path = Path::new(ament_prefix_path).join("lib");
+        for ament_prefix_path in env::split_paths(&ament_prefix_path_list) {
+            let library_path = ament_prefix_path.join("lib");
             println!("cargo:rustc-link-search=native={}", library_path.display());
         }
     }
