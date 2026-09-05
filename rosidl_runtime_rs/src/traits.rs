@@ -18,8 +18,13 @@
 use std::{borrow::Cow, fmt::Debug};
 
 /// Gives a `Sequence<T>` the trailing ABI fields that match
-/// `rosidl_runtime_c__<T>__Sequence` for its element type: [`crate::BufferFlags`]
-/// for primitive elements on distros that carry them, `()` otherwise.
+/// `rosidl_runtime_c__<T>__Sequence` for its element type.
+///
+/// Starting with Lyrical, every C type declared through
+/// `ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE` has two trailing flags. That macro
+/// covers numeric primitives **and** `String`/`U16String`, so those element
+/// types use [`crate::BufferFlags`] on Lyrical+ and `()` on Humble/Jazzy/Kilted.
+/// Message element types always use `()`, their C sequences were not extended.
 ///
 /// Kept separate from [`SequenceAlloc`] so that trait stays about the C alloc
 /// functions. User code never needs to implement this.

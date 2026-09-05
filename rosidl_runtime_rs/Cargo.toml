@@ -44,3 +44,5 @@ rustflags = "0.1"
 
 [package.metadata.docs.rs]
 features = ["use_ros_shim"]
+# build.rs reads this via rustflags under use_ros_shim (same pattern as rclrs)
+rustc-args = ["--cfg", "ros_distro=\"humble\""]
