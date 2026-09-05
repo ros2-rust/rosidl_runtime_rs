@@ -10,7 +10,7 @@ use std::{
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::{sequence::Sequence, traits::SequenceAlloc};
+use crate::{sequence::Sequence, traits::SequenceAlloc, traits::SequenceLayout};
 
 /// A zero-terminated UTF-8 string.
 ///
@@ -261,6 +261,18 @@ macro_rules! string_impl {
         // SAFETY: A string does not have interior mutability, so it can be shared.
         unsafe impl Sync for $string {}
 
+        // `String`/`U16String` sequences come from the SAME
+        // ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE macro as the primitive ones
+        // (rosidl_runtime_c/string.h), so they carry the flags too.
+        #[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+        impl SequenceLayout for $string {
+            type LayoutTail = crate::BufferFlags;
+        }
+        #[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+        impl SequenceLayout for $string {
+            type LayoutTail = ();
+        }
+
         impl SequenceAlloc for $string {
             fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool {
                 // SAFETY: There are no special preconditions to the sequence_init function.
@@ -387,6 +399,16 @@ impl<const N: usize> Display for BoundedString<N> {
     }
 }
 
+// A bounded string sequence is the same C struct as the unbounded one.
+#[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+impl<const N: usize> SequenceLayout for BoundedString<N> {
+    type LayoutTail = crate::BufferFlags;
+}
+#[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+impl<const N: usize> SequenceLayout for BoundedString<N> {
+    type LayoutTail = ();
+}
+
 impl<const N: usize> SequenceAlloc for BoundedString<N> {
     fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool {
         // SAFETY: There are no special preconditions to the rosidl_runtime_c__String__Sequence__init function.
@@ -453,6 +475,16 @@ impl<const N: usize> Display for BoundedWString<N> {
     }
 }
 
+// A bounded string sequence is the same C struct as the unbounded one.
+#[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+impl<const N: usize> SequenceLayout for BoundedWString<N> {
+    type LayoutTail = crate::BufferFlags;
+}
+#[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+impl<const N: usize> SequenceLayout for BoundedWString<N> {
+    type LayoutTail = ();
+}
+
 impl<const N: usize> SequenceAlloc for BoundedWString<N> {
     fn sequence_init(seq: &mut Sequence<Self>, size: usize) -> bool {
         // SAFETY: There are no special preconditions to the rosidl_runtime_c__U16String__Sequence__init function.
@@ -509,6 +541,30 @@ mod tests {
     use quickcheck::{Arbitrary, Gen};
 
     use super::*;
+
+    // The layout of the C structs, as reported by src/sequence_abi.c after the
+    // C compiler read the headers of this ROS installation.
+    #[cfg(has_c_abi_probe)]
+    extern "C" {
+        static rosidl_rs_string_size: usize;
+        static rosidl_rs_u16string_size: usize;
+    }
+
+    /// The buffer flags belong to the sequence structs, not to the string
+    /// structs, so these sizes have to stay the same on every distro. Getting
+    /// this wrong the other way around would shift every field of a message
+    /// that holds a string.
+    #[test]
+    #[cfg(has_c_abi_probe)]
+    fn test_string_size_matches_c() {
+        // SAFETY: These are `const size_t` objects with external linkage.
+        let (string, u16string) = unsafe { (rosidl_rs_string_size, rosidl_rs_u16string_size) };
+
+        assert_eq!(std::mem::size_of::<String>(), string);
+        assert_eq!(std::mem::size_of::<BoundedString<4>>(), string);
+        assert_eq!(std::mem::size_of::<WString>(), u16string);
+        assert_eq!(std::mem::size_of::<BoundedWString<4>>(), u16string);
+    }
 
     impl Arbitrary for String {
         fn arbitrary(g: &mut Gen) -> Self {

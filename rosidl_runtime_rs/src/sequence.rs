@@ -9,7 +9,7 @@ use std::{
 #[cfg(feature = "serde")]
 mod serde;
 
-use crate::traits::SequenceAlloc;
+use crate::traits::{SequenceAlloc, SequenceLayout};
 
 /// An unbounded sequence.
 ///
@@ -41,6 +41,21 @@ pub struct Sequence<T: SequenceAlloc> {
     data: *mut T,
     size: usize,
     capacity: usize,
+    _tail: T::LayoutTail,
+}
+
+/// Mirrors the two trailing fields of `rosidl_runtime_c__<T>__Sequence` for
+/// primitive element types. Starting with Lyrical, primitive sequences have
+/// these extra flags in their ABI; they are set/read only by the C++ side, so
+/// on the CPU backend both are `false` and the sequence behaves as before. See
+/// <https://github.com/ros2/rosidl/blob/rolling/rosidl_runtime_c/include/rosidl_runtime_c/primitives_sequence.h>.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct BufferFlags {
+    /// `true` when `data` points to an `rosidl::Buffer<T>*` rather than a plain array.
+    _is_rosidl_buffer: bool,
+    /// `true` when the sequence's fini must destroy that buffer.
+    _owns_rosidl_buffer: bool,
 }
 
 /// A bounded sequence.
@@ -114,6 +129,7 @@ impl<T: SequenceAlloc> Default for Sequence<T> {
             data: std::ptr::null_mut(),
             size: 0,
             capacity: 0,
+            _tail: Default::default(),
         }
     }
 }
@@ -312,6 +328,7 @@ impl<T: SequenceAlloc, const N: usize> Default for BoundedSequence<T, N> {
                 data: std::ptr::null_mut(),
                 size: 0,
                 capacity: 0,
+                _tail: Default::default(),
             },
         }
     }
@@ -398,6 +415,7 @@ impl<T: SequenceAlloc, const N: usize> IntoIterator for BoundedSequence<T, N> {
                 data: std::ptr::null_mut(),
                 size: 0,
                 capacity: 0,
+                _tail: Default::default(),
             },
         );
         SequenceIterator { seq, idx: 0 }
@@ -523,6 +541,16 @@ macro_rules! impl_sequence_alloc_for_primitive_type {
                 in_seq: *const Sequence<$rust_type>,
                 out_seq: *mut Sequence<$rust_type>,
             ) -> bool;
+        }
+
+        // Primitive sequences carry the layout flags from Lyrical on.
+        #[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+        impl SequenceLayout for $rust_type {
+            type LayoutTail = crate::BufferFlags;
+        }
+        #[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+        impl SequenceLayout for $rust_type {
+            type LayoutTail = ();
         }
 
         impl SequenceAlloc for $rust_type {
@@ -685,6 +713,94 @@ mod tests {
             let len = u8::arbitrary(g);
             (0..len).map(|_| T::arbitrary(g)).collect()
         }
+    }
+
+    // The layout of the C structs, as reported by src/sequence_abi.c after the
+    // C compiler read the headers of this ROS installation.
+    #[cfg(has_c_abi_probe)]
+    extern "C" {
+        static rosidl_rs_primitive_sequence_size: usize;
+        static rosidl_rs_string_sequence_size: usize;
+        static rosidl_rs_u16string_sequence_size: usize;
+        static rosidl_rs_message_sequence_size: usize;
+        static rosidl_rs_sequence_data_offset: usize;
+        static rosidl_rs_sequence_size_offset: usize;
+        static rosidl_rs_sequence_capacity_offset: usize;
+        static rosidl_rs_sequence_align: usize;
+    }
+
+    /// `Sequence<T>` is handed to C as `rosidl_runtime_c__<T>__Sequence`, so it
+    /// has to be the size of that struct in the installed headers. From Lyrical
+    /// on, every type declared through ROSIDL_RUNTIME_C__PRIMITIVE_SEQUENCE
+    /// carries two trailing flags, and that macro covers `String` and
+    /// `U16String` as well as the numeric primitives.
+    #[test]
+    #[cfg(has_c_abi_probe)]
+    fn test_sequence_size_matches_c() {
+        // SAFETY: These are `const size_t` objects with external linkage.
+        let (primitive, string, u16string, message) = unsafe {
+            (
+                rosidl_rs_primitive_sequence_size,
+                rosidl_rs_string_sequence_size,
+                rosidl_rs_u16string_sequence_size,
+                rosidl_rs_message_sequence_size,
+            )
+        };
+
+        #[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+        assert_eq!(primitive, message);
+        #[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+        assert_ne!(
+            primitive, message,
+            "Lyrical+ primitive sequences carry buffer flags; message sequences do not"
+        );
+
+        assert_eq!(std::mem::size_of::<Sequence<f64>>(), primitive);
+        assert_eq!(std::mem::size_of::<Sequence<u8>>(), primitive);
+        assert_eq!(std::mem::size_of::<Sequence<i16>>(), primitive);
+        assert_eq!(std::mem::size_of::<Sequence<bool>>(), primitive);
+        assert_eq!(std::mem::size_of::<BoundedSequence<f64, 4>>(), primitive);
+
+        assert_eq!(std::mem::size_of::<Sequence<crate::String>>(), string);
+        assert_eq!(
+            std::mem::size_of::<BoundedSequence<crate::String, 4>>(),
+            string
+        );
+        assert_eq!(
+            std::mem::size_of::<Sequence<crate::BoundedString<4>>>(),
+            string
+        );
+
+        assert_eq!(std::mem::size_of::<Sequence<crate::WString>>(), u16string);
+        assert_eq!(
+            std::mem::size_of::<BoundedSequence<crate::WString, 4>>(),
+            u16string
+        );
+        assert_eq!(
+            std::mem::size_of::<Sequence<crate::BoundedWString<4>>>(),
+            u16string
+        );
+    }
+
+    /// A matching size is not enough on its own, because it says nothing about
+    /// the order of the fields C reads and writes.
+    #[test]
+    #[cfg(has_c_abi_probe)]
+    fn test_sequence_field_offsets_match_c() {
+        // SAFETY: These are `const size_t` objects with external linkage.
+        let (data, size, capacity, align) = unsafe {
+            (
+                rosidl_rs_sequence_data_offset,
+                rosidl_rs_sequence_size_offset,
+                rosidl_rs_sequence_capacity_offset,
+                rosidl_rs_sequence_align,
+            )
+        };
+
+        assert_eq!(std::mem::offset_of!(Sequence<f64>, data), data);
+        assert_eq!(std::mem::offset_of!(Sequence<f64>, size), size);
+        assert_eq!(std::mem::offset_of!(Sequence<f64>, capacity), capacity);
+        assert_eq!(std::mem::align_of::<Sequence<f64>>(), align);
     }
 
     #[test]
