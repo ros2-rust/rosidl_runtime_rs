@@ -22,10 +22,10 @@ cfg_if::cfg_if! {
         #[cfg(feature = "abi_check")]
         fn compile_sequence_abi_probe(ament_prefix_path_list: &str) {
             let mut probe = cc::Build::new();
-            for ament_prefix_path in ament_prefix_path_list.split(':') {
+            for ament_prefix_path in env::split_paths(ament_prefix_path_list) {
                 // Iron and later nest the headers of a package one level
                 // deeper, so offer both conventions and let the compiler pick.
-                let include_path = Path::new(ament_prefix_path).join("include");
+                let include_path = ament_prefix_path.join("include");
                 probe.include(include_path.join("rosidl_runtime_c"));
                 probe.include(include_path);
             }
