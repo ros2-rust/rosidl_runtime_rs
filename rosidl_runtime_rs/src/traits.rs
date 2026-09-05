@@ -30,6 +30,21 @@ pub trait SequenceAlloc: Sized {
     fn sequence_copy(in_seq: &crate::Sequence<Self>, out_seq: &mut crate::Sequence<Self>) -> bool;
 }
 
+/// Internal trait connecting primitive sequences to `rosidl_runtime_c` allocation functions.
+///
+/// User code does not need to call or implement this trait.
+pub trait PrimitiveSequenceAlloc: Copy + Sized {
+    /// Wraps the corresponding primitive sequence init function.
+    fn primitive_sequence_init(seq: &mut crate::PrimitiveSequence<Self>, size: usize) -> bool;
+    /// Wraps the corresponding primitive sequence fini function.
+    fn primitive_sequence_fini(seq: &mut crate::PrimitiveSequence<Self>);
+    /// Wraps the corresponding primitive sequence copy function.
+    fn primitive_sequence_copy(
+        in_seq: &crate::PrimitiveSequence<Self>,
+        out_seq: &mut crate::PrimitiveSequence<Self>,
+    ) -> bool;
+}
+
 /// Trait for RMW-native messages.
 ///
 /// See the documentation for the [`Message`] trait, which is the trait that should generally be
@@ -74,8 +89,10 @@ pub trait RmwMessage: Clone + Debug + Default + Send + Sync + Message {
 /// | `wstring` | [`WString`](crate::WString) |
 /// | `string<=N`, for example `string<=10` | [`BoundedString`](crate::BoundedString) |
 /// | `wstring<=N`, for example `wstring<=10` | [`BoundedWString`](crate::BoundedWString) |
-/// | `T[]`, for example `int32[]` | [`Sequence`](crate::Sequence) |
-/// | `T[<=N]`, for example `int32[<=32]` | [`BoundedSequence`](crate::BoundedSequence) |
+/// | primitive `T[]`, for example `int32[]` | [`PrimitiveSequence`](crate::PrimitiveSequence) |
+/// | message `T[]` | [`Sequence`](crate::Sequence) |
+/// | primitive `T[<=N]` | [`BoundedPrimitiveSequence`](crate::BoundedPrimitiveSequence) |
+/// | message `T[<=N]` | [`BoundedSequence`](crate::BoundedSequence) |
 /// | `T[N]`, for example `float32[8]` | standard Rust arrays |
 /// | primitive type, for example `float64` | corresponding Rust primitive type |
 ///
