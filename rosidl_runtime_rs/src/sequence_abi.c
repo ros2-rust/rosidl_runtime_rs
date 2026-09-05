@@ -12,6 +12,7 @@
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/string.h>
 #include <rosidl_runtime_c/u16string.h>
+#include <builtin_interfaces/msg/detail/time__struct.h>
 
 typedef rosidl_runtime_c__double__Sequence primitive_sequence;
 
@@ -27,6 +28,9 @@ struct alignment_probe
 const size_t rosidl_rs_primitive_sequence_size = sizeof(primitive_sequence);
 const size_t rosidl_rs_string_sequence_size = sizeof(rosidl_runtime_c__String__Sequence);
 const size_t rosidl_rs_u16string_sequence_size = sizeof(rosidl_runtime_c__U16String__Sequence);
+// Message-element sequences were not extended in rosidl#942; they stay
+// pointer/size/capacity on every distro, including Lyrical+.
+const size_t rosidl_rs_message_sequence_size = sizeof(builtin_interfaces__msg__Time__Sequence);
 
 // Where C keeps the three fields both sides read and write, and how it aligns
 // the struct that holds them.

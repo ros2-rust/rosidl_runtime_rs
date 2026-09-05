@@ -25,9 +25,10 @@ use std::{borrow::Cow, fmt::Debug};
 /// covers numeric primitives **and** `String`/`U16String`, so those element
 /// types use [`crate::BufferFlags`] on Lyrical+ and `()` on Humble/Jazzy/Kilted.
 /// Message element types always use `()`, their C sequences were not extended.
+/// Generated RMW structs get that via the blanket impl on [`RmwMessage`].
 ///
 /// Kept separate from [`SequenceAlloc`] so that trait stays about the C alloc
-/// functions. User code never needs to implement this.
+/// functions. User code never needs to implement this for message types.
 pub trait SequenceLayout {
     /// See the trait docs.
     type LayoutTail: Copy + Default;
@@ -58,6 +59,10 @@ pub trait RmwMessage: Clone + Debug + Default + Send + Sync + Message {
 
     /// Get a pointer to the correct `rosidl_message_type_support_t` structure.
     fn get_type_support() -> *const std::ffi::c_void;
+}
+
+impl<T: RmwMessage> SequenceLayout for T {
+    type LayoutTail = ();
 }
 
 /// Trait for types that can be used in a `rclrs::Subscription` and a `rclrs::Publisher`.

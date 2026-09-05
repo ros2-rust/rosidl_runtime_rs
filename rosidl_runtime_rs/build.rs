@@ -27,6 +27,7 @@ cfg_if::cfg_if! {
                 // deeper, so offer both conventions and let the compiler pick.
                 let include_path = ament_prefix_path.join("include");
                 probe.include(include_path.join("rosidl_runtime_c"));
+                probe.include(include_path.join("builtin_interfaces"));
                 probe.include(include_path);
             }
             probe

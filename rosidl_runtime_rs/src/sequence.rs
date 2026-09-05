@@ -722,6 +722,7 @@ mod tests {
         static rosidl_rs_primitive_sequence_size: usize;
         static rosidl_rs_string_sequence_size: usize;
         static rosidl_rs_u16string_sequence_size: usize;
+        static rosidl_rs_message_sequence_size: usize;
         static rosidl_rs_sequence_data_offset: usize;
         static rosidl_rs_sequence_size_offset: usize;
         static rosidl_rs_sequence_capacity_offset: usize;
@@ -737,13 +738,22 @@ mod tests {
     #[cfg(has_c_abi_probe)]
     fn test_sequence_size_matches_c() {
         // SAFETY: These are `const size_t` objects with external linkage.
-        let (primitive, string, u16string) = unsafe {
+        let (primitive, string, u16string, message) = unsafe {
             (
                 rosidl_rs_primitive_sequence_size,
                 rosidl_rs_string_sequence_size,
                 rosidl_rs_u16string_sequence_size,
+                rosidl_rs_message_sequence_size,
             )
         };
+
+        #[cfg(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted"))]
+        assert_eq!(primitive, message);
+        #[cfg(not(any(ros_distro = "humble", ros_distro = "jazzy", ros_distro = "kilted")))]
+        assert_ne!(
+            primitive, message,
+            "Lyrical+ primitive sequences carry buffer flags; message sequences do not"
+        );
 
         assert_eq!(std::mem::size_of::<Sequence<f64>>(), primitive);
         assert_eq!(std::mem::size_of::<Sequence<u8>>(), primitive);
