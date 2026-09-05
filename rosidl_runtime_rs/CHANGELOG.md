@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.6.1...v0.7.0) - 2026-09-05
+
+### Fixed
+
+- [**breaking**] match rosidl_buffer primitive-sequence ABI on Lyrical+ ([#22](https://github.com/ros2-rust/rosidl_runtime_rs/pull/22))
+- don't hard code a *nix path separator ([#27](https://github.com/ros2-rust/rosidl_runtime_rs/pull/27))
+
 ## [0.6.1](https://github.com/ros2-rust/rosidl_runtime_rs/compare/v0.6.0...v0.6.1) - 2026-06-08
 
 ### Other
